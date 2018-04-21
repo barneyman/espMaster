@@ -6,6 +6,8 @@
 #define CMD_SETALL	2	// set all leds to RGB
 #define CMD_SETONE	3	// set a single led - offset(0) RGB
 #define CMD_SHIFT	4	// shift current set - signed byte (for L and R) RGB replace
+#define CMD_DISPLAY	6	// shunt out to the LEDS - beware, interrupts get cleared, so I2C will fail
+#define CMD_INVERT	7	// invert all rgbs
 
 #define NUM_LEDS	15
 
@@ -13,7 +15,123 @@
 
 #define _AT85_ADDR	0x10
 
+#define FULL_BRIGHT		15
+#define EXTRA_BRIGHT	31
 
+class ATleds
+{
+protected:
+
+	int m_addr;
+
+public:
+	ATleds(int addr) :m_addr(addr)
+	{
+	};
+
+	bool SetSize(unsigned size)
+	{
+		byte data[] = { CMD_SIZE, (byte)size };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool SetAll(byte r, byte g, byte b)
+	{
+		byte data[] = { CMD_SETALL, r,g,b };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool SetOne(byte offset, byte r, byte g, byte b)
+	{
+		byte data[] = { CMD_SETONE,offset, r,g,b };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool WipeRight(byte r, byte g, byte b, byte step=1)
+	{
+		byte data[] = { CMD_SHIFT,step, r,g,b };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool WipeLeft(byte r, byte g, byte b, byte step = 1)
+	{
+		byte data[] = { CMD_SHIFT,(byte)(signed char)(-(signed char)step), r,g,b };
+		return SendData(&data[0], sizeof(data));
+	}
+
+
+	bool Clear()
+	{
+		byte data[] = { CMD_RESET };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	void DisplayAndWait()
+	{
+		byte data[] = { CMD_DISPLAY };
+		bool ret = SendData(&data[0], sizeof(data), true);
+	}
+
+	bool Invert(byte mask)
+	{
+		byte data[] = { CMD_INVERT,mask };
+		return SendData(&data[0], sizeof(data));
+	}
+
+protected:
+
+	bool SendData(byte *data, unsigned size, bool waitIfDisplayed=false)
+	{
+		Wire.beginTransmission(m_addr);
+		for (unsigned each = 0; each<size; each++)
+			Wire.write(data[each]);
+		byte error = Wire.endTransmission();
+		if (error == 4)
+		{
+			return false;
+		}
+		// we suffer because the at turns off interrupts when it shunts to LED
+		// so - take breath 
+		if(waitIfDisplayed)
+			delay(50);
+		waitForSpace(waitIfDisplayed);
+		return true;
+	}
+
+	// flushed means wait until Display has run really
+	void waitForSpace(bool flushed=1)
+	{
+		do {
+			byte ack;
+			while (!(ack=Wire.requestFrom(m_addr, 1))) 
+			{
+				Serial.printf(".", ack);
+				//delayMicroseconds(50);
+				delay(1);
+			}
+			//Serial.printf("=%d ", ack);
+			ack = Wire.read();
+			//Serial.printf("%c%03d ", (ack & 128) ? '+' : '!', ack & 127);
+			if (flushed)
+			{
+				if (ack == 0x80)
+					break;
+			}
+			if (ack & 0x80)
+				break;
+			delayMicroseconds(50);
+		} while (true);
+		//Serial.println();
+
+	}
+
+};
+
+ATleds leds(_AT85_ADDR);
+
+#define COMMAND_DELAY	1000
+#define WIPE_DELAY		200
+#define ERROR_DELAY		1000
 
 void setup()
 {
@@ -26,52 +144,25 @@ void setup()
 	Serial.println("LED toy");
 	delay(2000);
 
-#ifndef SCANI2C
-
-/*
+	// set the size
 	// tell it how many leds it has
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SIZE);
-	Wire.write((byte)NUM_LEDS);
-	byte error = Wire.endTransmission();
-	if (error == 4)
+	Serial.println("SIZE");
+	if (!leds.SetSize(NUM_LEDS))
 	{
 		Serial.println("err size");
-		delay(1000);
+		delay(ERROR_DELAY);
 	}
-	delay(1000);
-
-
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_RESET);
-	error = Wire.endTransmission();
-	if (error == 4)
-	{
-		Serial.println("err reset");
-		delay(1000);
-	}
-
-	*/
-
-#endif
-
 }
 
-#define ACK() { do { Wire.requestFrom(_AT85_ADDR, 1); ack = Wire.read(); Serial.printf("%c%03d ", (ack&128)?'!':' ', ack&127); if (ack & 0x80) break; delay(1000); } while (true); }
 
+#define _TEST_ONE
+#define _TEST_ALL
+#define _TEST_WIPE
+#define _TEST_INVERT_
 
 void loop()
 {
-	byte ack = 0;
-	
-	
 
-
-
-
-
-
-	byte error;
 #ifdef SCANI2C
 
 	byte address;
@@ -117,193 +208,203 @@ void loop()
 
 	Serial.println("starting ...");
 
-	ACK();
-
-
-	// tell it how many leds it has
-	Serial.println("SIZE");
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SIZE);
-	Wire.write((byte)NUM_LEDS);
-	error = Wire.endTransmission();
-	if (error == 4)
-	{
-		Serial.println("err size");
-		delay(1000);
-	}
-	ACK();
-	delay(1000);
-
-
+#ifdef _TEST_ALL
 	Serial.println("RED");
 	// all red
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SETALL);
-	if (!Wire.write((byte)16))
-		Serial.println("err 16");
-	if (!Wire.write((byte)0))
-		Serial.println("err 0 1");
-	if (!Wire.write((byte)0))
-		Serial.println("err 0 2");
-	error=Wire.endTransmission();
-	if (error == 4)
+	if(!leds.SetAll(FULL_BRIGHT,0,0))
 	{
 		Serial.println("err");
-		delay(1000);
+		delay(ERROR_DELAY);
 		return;
 	}
-	ACK();
-	delay(500);
+
+	leds.DisplayAndWait();
+
+	delay(COMMAND_DELAY);
 
 	Serial.println("GREEN");
 	// all green
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SETALL);
-	Wire.write((byte)0);
-	Wire.write((byte)16);
-	Wire.write((byte)0);
-	error = Wire.endTransmission();
-	if (error == 4)
+	if (!leds.SetAll(0, FULL_BRIGHT, 0))
 	{
 		Serial.println("err");
+		delay(ERROR_DELAY);
 		return;
 
 	}
-	ACK();
-	delay(500);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
 
 	Serial.println("BLUE");
 	// all blue
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SETALL);
-	Wire.write((byte)0);
-	Wire.write((byte)0);
-	Wire.write((byte)16);
-	error = Wire.endTransmission();
-	if (error == 4)
+	if(!leds.SetAll(0, 0, FULL_BRIGHT))
 	{
 		Serial.println("err");
+		delay(ERROR_DELAY);
 		return;
 
 	}
-	ACK();
-	delay(500);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
 
 	// all white
 	Serial.println("WHITE");
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_SETALL);
-	Wire.write((byte)16);
-	Wire.write((byte)16);
-	Wire.write((byte)16);
-	error = Wire.endTransmission();
-	if (error == 4)
+	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, FULL_BRIGHT))
 	{
 		Serial.println("err");
+		delay(ERROR_DELAY);
 		return;
 
 	}
-	ACK();
-	delay(500);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+#endif
+
+#ifdef _TEST_ONE
 
 	Serial.println("SETONE YELLOW");
 	for (unsigned each = 0; each < NUM_LEDS; each ++ )
 	{
-		Wire.beginTransmission(_AT85_ADDR);
-		Wire.write((byte)CMD_SETONE);
-		Wire.write((byte)each);
-		Wire.write((byte)16);
-		Wire.write((byte)16);
-		Wire.write((byte)0);
-		error = Wire.endTransmission();
-		if (error == 4)
+		if(!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT,0))
 		{
 			Serial.println("err");
+			delay(ERROR_DELAY);
 			return;
 
 		}
-		ACK();
-		delay(100);
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
 
 	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+#endif
+
+#ifdef _TEST_WIPE
 
 	// idx0 green
-	for(int alt=0;alt<NUM_LEDS;alt+=2)
+	Serial.println("ALT CYAN");
+	for(int alt=0;alt<NUM_LEDS;alt+=3)
 	{
-		Wire.beginTransmission(_AT85_ADDR);
-		Wire.write((byte)CMD_SETONE);
-		Wire.write((byte)alt);
-		Wire.write((byte)0);
-		Wire.write((byte)16);
-		Wire.write((byte)16);
-		error = Wire.endTransmission();
-		ACK();
-		delay(200);
+		if (!leds.SetOne(alt, 0, FULL_BRIGHT, FULL_BRIGHT))
+		{
+			Serial.println("err");
+			delay(ERROR_DELAY);
+			return;
+		}
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
 	}
-	if (error == 4)
-	{
-		Serial.println("err");
-		return;
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
 
-	}
+#if defined (_TEST_INVERT_) && defined(_TEST_WIPE)
 
-#ifdef DOSHIFT
+	leds.Invert(FULL_BRIGHT);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	leds.Invert(FULL_BRIGHT);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+#endif 
+
+
 
 	// shift right, replace red
 	Serial.println("SHIFT RIGHT");
-	for (unsigned each = 0; each < 5; each++)
+	for (unsigned each = 0; each < (NUM_LEDS); each++)
 	{
-		Wire.beginTransmission(_AT85_ADDR);
-		Wire.write((byte)CMD_SHIFT);
-		Wire.write((byte)1);
-		Wire.write((byte)16);
-		Wire.write((byte)0);
-		Wire.write((byte)0);
-		error = Wire.endTransmission(false);
-		if (error == 4)
+		if(!leds.WipeRight(FULL_BRIGHT,0,0))
 		{
 			Serial.println("err");
 			return;
 
 		}
-		delay(500);
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
 	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	// idx0 green
+	Serial.println("ALT CYAN");
+	for (int alt = 0; alt<NUM_LEDS; alt += 3)
+	{
+		if (!leds.SetOne(alt, 0, FULL_BRIGHT, FULL_BRIGHT))
+		{
+			Serial.println("err");
+			delay(ERROR_DELAY);
+			return;
+		}
+		//leds.DisplayAndWait();
+		//delay(WIPE_DELAY);
+	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
 
 	// shift left - replace blue
-	Serial.println("SHIFT RIGHT");
-	for (unsigned each = 0; each < 5; each++)
+	Serial.println("SHIFT LEFT");
+	for (unsigned each = 0; each < NUM_LEDS; each++)
 	{
-		Wire.beginTransmission(_AT85_ADDR);
-		Wire.write((byte)CMD_SHIFT);
-		Wire.write((byte)1);
-		Wire.write((byte)0);
-		Wire.write((byte)0);
-		Wire.write((byte)0);
-		error = Wire.endTransmission(false);
-		if (error == 4)
+		if(!leds.WipeLeft(FULL_BRIGHT, FULL_BRIGHT, FULL_BRIGHT))
 		{
 			Serial.println("err");
 			return;
 
 		}
-		delay(500);
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
 	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+#endif
+
+#ifdef _TEST_ONE
+	// loops
+	Serial.println("LOOPS");
+	for (unsigned each = 0; each < NUM_LEDS; each++)
+	{
+		leds.Clear();
+		if(each>0)
+			leds.SetOne(each-1, FULL_BRIGHT, 0, 0);
+		leds.SetOne(each, EXTRA_BRIGHT, FULL_BRIGHT, 0);
+		leds.SetOne(each+1, FULL_BRIGHT, 0, 0);
+
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
+	}
+#endif
+
+#ifdef _TEST_INVERT_
+
+	leds.SetAll(FULL_BRIGHT, 0, 0);
+	leds.DisplayAndWait();
+	delay(WIPE_DELAY);
+	leds.Invert(15);
+	leds.DisplayAndWait();
+	delay(WIPE_DELAY);
+
+#endif
 
 	Serial.println("RESET");
 
-	Wire.beginTransmission(_AT85_ADDR);
-	Wire.write((byte)CMD_RESET);
-	error = Wire.endTransmission();
-	if (error == 4)
+	if(!leds.Clear())
 	{
 		Serial.println("err");
+		delay(ERROR_DELAY);
 		return;
 
 	}
-#endif
+
+	
 	Serial.println("DONE");
 
-	delay(500);
+	delay(COMMAND_DELAY);
+
 
 
 #endif
