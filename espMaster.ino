@@ -11,6 +11,8 @@
 
 //#define SCANI2C
 
+#define _AT85_ADDR	0x10
+
 
 
 void setup()
@@ -28,7 +30,7 @@ void setup()
 
 /*
 	// tell it how many leds it has
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SIZE);
 	Wire.write((byte)NUM_LEDS);
 	byte error = Wire.endTransmission();
@@ -40,7 +42,7 @@ void setup()
 	delay(1000);
 
 
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_RESET);
 	error = Wire.endTransmission();
 	if (error == 4)
@@ -55,9 +57,20 @@ void setup()
 
 }
 
+#define ACK() { do { Wire.requestFrom(_AT85_ADDR, 1); ack = Wire.read(); Serial.printf("%c%03d ", (ack&128)?'!':' ', ack&127); if (ack & 0x80) break; delay(1000); } while (true); }
+
 
 void loop()
 {
+	byte ack = 0;
+	
+	
+
+
+
+
+
+
 	byte error;
 #ifdef SCANI2C
 
@@ -104,9 +117,12 @@ void loop()
 
 	Serial.println("starting ...");
 
+	ACK();
+
 
 	// tell it how many leds it has
-	Wire.beginTransmission(0x10);
+	Serial.println("SIZE");
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SIZE);
 	Wire.write((byte)NUM_LEDS);
 	error = Wire.endTransmission();
@@ -115,12 +131,13 @@ void loop()
 		Serial.println("err size");
 		delay(1000);
 	}
+	ACK();
 	delay(1000);
 
 
 	Serial.println("RED");
 	// all red
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SETALL);
 	if (!Wire.write((byte)16))
 		Serial.println("err 16");
@@ -135,11 +152,12 @@ void loop()
 		delay(1000);
 		return;
 	}
+	ACK();
 	delay(500);
 
 	Serial.println("GREEN");
 	// all green
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SETALL);
 	Wire.write((byte)0);
 	Wire.write((byte)16);
@@ -151,11 +169,12 @@ void loop()
 		return;
 
 	}
+	ACK();
 	delay(500);
 
 	Serial.println("BLUE");
 	// all blue
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SETALL);
 	Wire.write((byte)0);
 	Wire.write((byte)0);
@@ -167,11 +186,12 @@ void loop()
 		return;
 
 	}
+	ACK();
 	delay(500);
 
 	// all white
 	Serial.println("WHITE");
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_SETALL);
 	Wire.write((byte)16);
 	Wire.write((byte)16);
@@ -183,13 +203,13 @@ void loop()
 		return;
 
 	}
-
+	ACK();
 	delay(500);
 
 	Serial.println("SETONE YELLOW");
 	for (unsigned each = 0; each < NUM_LEDS; each ++ )
 	{
-		Wire.beginTransmission(0x10);
+		Wire.beginTransmission(_AT85_ADDR);
 		Wire.write((byte)CMD_SETONE);
 		Wire.write((byte)each);
 		Wire.write((byte)16);
@@ -202,6 +222,7 @@ void loop()
 			return;
 
 		}
+		ACK();
 		delay(100);
 
 	}
@@ -209,13 +230,14 @@ void loop()
 	// idx0 green
 	for(int alt=0;alt<NUM_LEDS;alt+=2)
 	{
-		Wire.beginTransmission(0x10);
+		Wire.beginTransmission(_AT85_ADDR);
 		Wire.write((byte)CMD_SETONE);
 		Wire.write((byte)alt);
 		Wire.write((byte)0);
 		Wire.write((byte)16);
 		Wire.write((byte)16);
 		error = Wire.endTransmission();
+		ACK();
 		delay(200);
 	}
 	if (error == 4)
@@ -231,7 +253,7 @@ void loop()
 	Serial.println("SHIFT RIGHT");
 	for (unsigned each = 0; each < 5; each++)
 	{
-		Wire.beginTransmission(0x10);
+		Wire.beginTransmission(_AT85_ADDR);
 		Wire.write((byte)CMD_SHIFT);
 		Wire.write((byte)1);
 		Wire.write((byte)16);
@@ -251,7 +273,7 @@ void loop()
 	Serial.println("SHIFT RIGHT");
 	for (unsigned each = 0; each < 5; each++)
 	{
-		Wire.beginTransmission(0x10);
+		Wire.beginTransmission(_AT85_ADDR);
 		Wire.write((byte)CMD_SHIFT);
 		Wire.write((byte)1);
 		Wire.write((byte)0);
@@ -269,7 +291,7 @@ void loop()
 
 	Serial.println("RESET");
 
-	Wire.beginTransmission(0x10);
+	Wire.beginTransmission(_AT85_ADDR);
 	Wire.write((byte)CMD_RESET);
 	error = Wire.endTransmission();
 	if (error == 4)
