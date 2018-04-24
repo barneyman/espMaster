@@ -9,14 +9,15 @@
 #define CMD_DISPLAY	6	// shunt out to the LEDS - beware, interrupts get cleared, so I2C will fail
 #define CMD_INVERT	7	// invert all rgbs
 
-#define NUM_LEDS	15
+#define NUM_LEDS	90
 
-//#define SCANI2C
 
 #define _AT85_ADDR	0x10
 
-#define FULL_BRIGHT		15
+#define FULL_BRIGHT		7
 #define EXTRA_BRIGHT	31
+
+
 
 class ATleds
 {
@@ -85,15 +86,15 @@ protected:
 		Wire.beginTransmission(m_addr);
 		for (unsigned each = 0; each<size; each++)
 			Wire.write(data[each]);
-		byte error = Wire.endTransmission();
+		byte error = Wire.endTransmission(false);
 		if (error == 4)
 		{
 			return false;
 		}
 		// we suffer because the at turns off interrupts when it shunts to LED
 		// so - take breath 
-		if(waitIfDisplayed)
-			delay(50);
+		//if(waitIfDisplayed)
+			delay(200);
 		waitForSpace(waitIfDisplayed);
 		return true;
 	}
@@ -101,6 +102,8 @@ protected:
 	// flushed means wait until Display has run really
 	void waitForSpace(bool flushed=1)
 	{
+		// we've just been sending, give the slave some breathing room
+		delay(1);
 		do {
 			byte ack;
 			while (!(ack=Wire.requestFrom(m_addr, 1))) 
@@ -130,7 +133,7 @@ protected:
 ATleds leds(_AT85_ADDR);
 
 #define COMMAND_DELAY	1000
-#define WIPE_DELAY		200
+#define WIPE_DELAY		100
 #define ERROR_DELAY		1000
 
 void setup()
@@ -144,6 +147,7 @@ void setup()
 	Serial.println("LED toy");
 	delay(2000);
 
+
 	// set the size
 	// tell it how many leds it has
 	Serial.println("SIZE");
@@ -155,58 +159,19 @@ void setup()
 }
 
 
-#define _TEST_ONE
-#define _TEST_ALL
-#define _TEST_WIPE
-#define _TEST_INVERT_
+//#define _TEST_ONE
+//#define _TEST_ALL
+//#define _TEST_WIPE
+//#define _TEST_INVERT_
+#define _TEST_LONG_CHAIN
+
 
 void loop()
 {
-
-#ifdef SCANI2C
-
-	byte address;
-	int nDevices;
-
-	Serial.println("Scanning...");
-
-	nDevices = 0;
-	for (address = 1; address < 127; address++)
-	{
-		// The i2c_scanner uses the return value of
-		// the Write.endTransmisstion to see if
-		// a device did acknowledge to the address.
-		Wire.beginTransmission(address);
-		error = Wire.endTransmission();
-
-		if (error == 0)
-		{
-			Serial.print("I2C device found at address 0x");
-			if (address<16)
-				Serial.print("0");
-			Serial.print(address, HEX);
-			Serial.println("  !");
-
-			nDevices++;
-		}
-		else if (error == 4)
-		{
-			Serial.print("Unknown error at address 0x");
-			if (address<16)
-				Serial.print("0");
-			Serial.println(address, HEX);
-		}
-	}
-	if (nDevices == 0)
-		Serial.println("No I2C devices found\n");
-	else
-		Serial.println("done\n");
-
-	delay(2000);
-
-#else
-
 	Serial.println("starting ...");
+
+	i2cscan();
+
 
 #ifdef _TEST_ALL
 	Serial.println("RED");
@@ -260,6 +225,49 @@ void loop()
 
 #endif
 
+#ifdef _TEST_LONG_CHAIN
+
+	Serial.println("YELLOW");
+	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, 0))
+	{
+		Serial.println("err");
+		delay(ERROR_DELAY);
+		return;
+
+	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	// all white
+	Serial.println("WHITE");
+	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, FULL_BRIGHT))
+	{
+		Serial.println("err");
+		delay(ERROR_DELAY);
+		return;
+
+	}
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	Serial.println("SETONE YELLOW");
+	for (unsigned each = 0; each < NUM_LEDS; each++)
+	{
+		if (!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0))
+		{
+			Serial.println("err");
+			delay(ERROR_DELAY);
+			return;
+		}
+		//leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0);
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
+	}
+	delay(COMMAND_DELAY);
+
+
+#endif
+
 #ifdef _TEST_ONE
 
 	Serial.println("SETONE YELLOW");
@@ -276,7 +284,6 @@ void loop()
 		delay(WIPE_DELAY);
 
 	}
-	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
 #endif
@@ -377,6 +384,19 @@ void loop()
 		leds.DisplayAndWait();
 		delay(WIPE_DELAY);
 	}
+
+
+#endif
+
+#ifdef _TEST_ALL
+	for (unsigned r = 0; r < FULL_BRIGHT; r+=5)
+		for (unsigned g = 0; g < FULL_BRIGHT; g+= 5)
+			for (unsigned b = 0; b < FULL_BRIGHT; b+= 5)
+			{
+				leds.SetAll(r, g, b);
+				leds.DisplayAndWait();
+				delay(WIPE_DELAY);
+			}
 #endif
 
 #ifdef _TEST_INVERT_
@@ -387,18 +407,24 @@ void loop()
 	leds.Invert(15);
 	leds.DisplayAndWait();
 	delay(WIPE_DELAY);
+	delay(COMMAND_DELAY);
 
 #endif
 
+#ifdef _TEST_RESET
+
 	Serial.println("RESET");
 
-	if(!leds.Clear())
+	if (!leds.Clear())
 	{
 		Serial.println("err");
 		delay(ERROR_DELAY);
 		return;
 
+
 	}
+#endif
+
 
 	
 	Serial.println("DONE");
@@ -407,8 +433,52 @@ void loop()
 
 
 
-#endif
+
 
 	
 
+}
+
+
+
+////
+
+void i2cscan()
+{
+	byte error, address;
+	int nDevices;
+
+	Serial.println("Scanning...");
+
+	nDevices = 0;
+	for (address = 1; address < 127; address++)
+	{
+		// The i2c_scanner uses the return value of
+		// the Write.endTransmisstion to see if
+		// a device did acknowledge to the address.
+		Wire.beginTransmission(address);
+		error = Wire.endTransmission();
+
+		if (error == 0)
+		{
+			Serial.print("I2C device found at address 0x");
+			if (address < 16)
+				Serial.print("0");
+			Serial.print(address, HEX);
+			Serial.println("  !");
+
+			nDevices++;
+		}
+		else if (error == 4)
+		{
+			Serial.print("Unknown error at address 0x");
+			if (address < 16)
+				Serial.print("0");
+			Serial.println(address, HEX);
+		}
+	}
+	if (nDevices == 0)
+		Serial.println("No I2C devices found\n");
+	else
+		Serial.println("done\n");
 }
