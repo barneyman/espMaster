@@ -1,5 +1,6 @@
 #include <Wire.h>
-#include <myWifi.h>
+#include <ESP8266WiFi.h>
+
 
 #define CMD_RESET	0	// turn it all off
 #define CMD_SIZE	1	// actual number of LEDS
@@ -10,13 +11,42 @@
 #define CMD_INVERT	7	// invert all rgbs
 
 #define NUM_LEDS	90
+//#define NUM_LEDS	15
 
 
 #define _AT85_ADDR	0x10
 
-#define FULL_BRIGHT		7
+#define FULL_BRIGHT		16
 #define EXTRA_BRIGHT	31
 
+// time to write to a ws2821b
+// (1.5us * 8 * 3 * NUM_LEDS)+50us 
+// lets go with 100us * NUM_LEDS
+// .1ms * NUM_LEDS
+
+//#define COMMAND_DELAY		1000
+//#define WIPE_DELAY			50
+//#define ERROR_DELAY			1000
+//#define DISPLAY_DELAY		(int)(NUM_LEDS/1)
+//#define REQUESTFROM_DELAY	10
+
+#define COMMAND_DELAY		500
+#define WIPE_DELAY			0
+#define ERROR_DELAY			1000
+#define DISPLAY_DELAY		5
+//#define REQUESTFROM_DELAY	5
+
+
+//#define _USE_OLED
+#ifdef _USE_OLED
+
+// https://github.com/ThingPulse/esp8266-oled-ssd1306.git
+//#include <SSD1306Wire.h>
+//SSD1306Wire display(0x3c, SDA, SCL);
+
+// https://github.com/datacute/Tiny4kOLED.git
+#include <Tiny4kOLED.h>
+#endif
 
 
 class ATleds
@@ -69,8 +99,13 @@ public:
 
 	void DisplayAndWait()
 	{
+		// wait until the queue is flushed, so we KNOW we're the only outstanding command
 		byte data[] = { CMD_DISPLAY };
 		bool ret = SendData(&data[0], sizeof(data), true);
+		if (!ret)
+		{
+			Serial.printf("DisplayAndWait failed\n\r");
+		}
 	}
 
 	bool Invert(byte mask)
@@ -85,68 +120,91 @@ protected:
 	{
 		Wire.beginTransmission(m_addr);
 		for (unsigned each = 0; each<size; each++)
-			Wire.write(data[each]);
-		byte error = Wire.endTransmission(false);
-		if (error == 4)
 		{
+			int sent = Wire.write(data[each]);
+			if ( sent!= 1)
+				Serial.printf("err on write %d\n\r", sent);
+		}
+		byte error = Wire.endTransmission();
+		if (error != I2C_OK)
+		{
+			Serial.printf("err on endTransmission %d\n\r", error);
 			return false;
 		}
+
 		// we suffer because the at turns off interrupts when it shunts to LED
-		// so - take breath 
-		//if(waitIfDisplayed)
-			delay(200);
+		// so - take a breath 
+		if (waitIfDisplayed)
+		{
+			delay(DISPLAY_DELAY);
+		}
+
 		waitForSpace(waitIfDisplayed);
+
 		return true;
 	}
 
 	// flushed means wait until Display has run really
-	void waitForSpace(bool flushed=1)
+	void waitForSpace(bool waitTilEmpty=true)
 	{
+		yield();
+#ifndef REQUESTFROM_DELAY
+		delay(5);
+		return;
+#else
 		// we've just been sending, give the slave some breathing room
-		delay(1);
 		do {
+			delay(REQUESTFROM_DELAY);
 			byte ack;
 			while (!(ack=Wire.requestFrom(m_addr, 1))) 
 			{
-				Serial.printf(".", ack);
-				//delayMicroseconds(50);
-				delay(1);
+				// we got no reply from the slave 
+				Serial.printf("%03d ", Wire.status());
+				
+				delay(ERROR_DELAY);
 			}
-			//Serial.printf("=%d ", ack);
 			ack = Wire.read();
-			//Serial.printf("%c%03d ", (ack & 128) ? '+' : '!', ack & 127);
-			if (flushed)
+			if (waitTilEmpty)
 			{
-				if (ack == 0x80)
+				if (ack & 0x40)
 					break;
 			}
-			if (ack & 0x80)
+			else if (ack & 0xC0)
+			{
 				break;
-			delayMicroseconds(50);
+			}
+			else
+			{
+				Serial.printf("ack %02x\n\r",ack);
+			}
 		} while (true);
-		//Serial.println();
-
+#endif
 	}
 
 };
 
 ATleds leds(_AT85_ADDR);
 
-#define COMMAND_DELAY	1000
-#define WIPE_DELAY		100
-#define ERROR_DELAY		1000
+
+#ifdef _USE_OLED
+SSD1306Device oled;
+#endif
 
 void setup()
 {
 	Serial.begin(9600);
-	delay(2000);
+	delay(5000);
 
-	myWifiClass::TurnOff();
+	WiFi.mode(WIFI_OFF);
+	while (WiFi.getMode() != WIFI_OFF)
+		delay(1);
 
 	Wire.begin();
+
 	Serial.println("LED toy");
 	delay(2000);
 
+	i2cscan();
 
 	// set the size
 	// tell it how many leds it has
@@ -156,24 +214,61 @@ void setup()
 		Serial.println("err size");
 		delay(ERROR_DELAY);
 	}
+
+#ifdef _USE_OLED
+
+	oled.begin();
+	oled.clear();
+	oled.on();
+	oled.switchRenderFrame();
+	oled.setFont(FONT6X8);
+
+	// oled 
+	//display.init();
+	//display.drawString(0, 0, "wibble");
+	//display.display();
+
+#endif
+
 }
 
-
-//#define _TEST_ONE
+#define _TEST_EVERYTHING
+// or
 //#define _TEST_ALL
+//#define _TEST_ONE
 //#define _TEST_WIPE
 //#define _TEST_INVERT_
-#define _TEST_LONG_CHAIN
+//#define _TEST_LONG_CHAIN
+//#define _TEST_LOOPS
 
 
 void loop()
 {
 	Serial.println("starting ...");
 
-	i2cscan();
+
+#ifdef _USE_OLED
+
+	oled.fill(255);
+	oled.switchFrame();
+	delay(2000);
+
+	oled.clear();
+	//oled.setCursor(0, 0);
+	oled.print("ticktock");
+	oled.switchFrame();
+
+	//display.clear();
+	//display.drawString(0, 0, "wibble");
+	//display.display();
+	delay(2000);
+	return;
+
+#endif
 
 
-#ifdef _TEST_ALL
+
+#if defined( _TEST_ALL ) || defined(_TEST_EVERYTHING)
 	Serial.println("RED");
 	// all red
 	if(!leds.SetAll(FULL_BRIGHT,0,0))
@@ -225,18 +320,8 @@ void loop()
 
 #endif
 
-#ifdef _TEST_LONG_CHAIN
 
-	Serial.println("YELLOW");
-	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, 0))
-	{
-		Serial.println("err");
-		delay(ERROR_DELAY);
-		return;
-
-	}
-	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+#if defined(_TEST_ONE) || defined(_TEST_EVERYTHING)
 
 	// all white
 	Serial.println("WHITE");
@@ -250,16 +335,15 @@ void loop()
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
-	Serial.println("SETONE YELLOW");
+	Serial.println("SETONE BLACK");
 	for (unsigned each = 0; each < NUM_LEDS; each++)
 	{
-		if (!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0))
+		if (!leds.SetOne(each, 0, 0, 0))
 		{
 			Serial.println("err");
 			delay(ERROR_DELAY);
 			return;
 		}
-		//leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0);
 		leds.DisplayAndWait();
 		delay(WIPE_DELAY);
 	}
@@ -268,27 +352,7 @@ void loop()
 
 #endif
 
-#ifdef _TEST_ONE
-
-	Serial.println("SETONE YELLOW");
-	for (unsigned each = 0; each < NUM_LEDS; each ++ )
-	{
-		if(!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT,0))
-		{
-			Serial.println("err");
-			delay(ERROR_DELAY);
-			return;
-
-		}
-		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
-
-	}
-	delay(COMMAND_DELAY);
-
-#endif
-
-#ifdef _TEST_WIPE
+#if defined(_TEST_WIPE) || defined(_TEST_EVERYTHING)
 
 	// idx0 green
 	Serial.println("ALT CYAN");
@@ -306,7 +370,7 @@ void loop()
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
-#if defined (_TEST_INVERT_) && defined(_TEST_WIPE)
+#if defined (_TEST_INVERT_) && defined(_TEST_EVERYTHING)
 
 	leds.Invert(FULL_BRIGHT);
 	leds.DisplayAndWait();
@@ -370,16 +434,37 @@ void loop()
 	delay(COMMAND_DELAY);
 #endif
 
-#ifdef _TEST_ONE
+#if defined(_TEST_ONE) || defined(_TEST_EVERYTHING)
+
+	Serial.println("SETONE YELLOW");
+	for (unsigned each = 0; each < NUM_LEDS; each++)
+	{
+		if (!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0))
+		{
+			Serial.println("err");
+			delay(ERROR_DELAY);
+			return;
+
+		}
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
+
+	}
+	delay(COMMAND_DELAY);
+
+#endif
+
+#if defined(_TEST_LOOPS) || defined(_TEST_EVERYTHING)
 	// loops
 	Serial.println("LOOPS");
 	for (unsigned each = 0; each < NUM_LEDS; each++)
 	{
 		leds.Clear();
-		if(each>0)
-			leds.SetOne(each-1, FULL_BRIGHT, 0, 0);
+		//if(each>0)
+		//	leds.SetOne(each-1, FULL_BRIGHT, 0, 0);
 		leds.SetOne(each, EXTRA_BRIGHT, FULL_BRIGHT, 0);
-		leds.SetOne(each+1, FULL_BRIGHT, 0, 0);
+		//if(each<NUM_LEDS)
+		//	leds.SetOne(each+1, FULL_BRIGHT, 0, 0);
 
 		leds.DisplayAndWait();
 		delay(WIPE_DELAY);
@@ -388,10 +473,11 @@ void loop()
 
 #endif
 
-#ifdef _TEST_ALL
-	for (unsigned r = 0; r < FULL_BRIGHT; r+=5)
-		for (unsigned g = 0; g < FULL_BRIGHT; g+= 5)
-			for (unsigned b = 0; b < FULL_BRIGHT; b+= 5)
+#if defined(_TEST_LOOPS) || defined(_TEST_EVERYTHING)
+	Serial.println("LOOP COLORS");
+	for (unsigned r = 0; r < FULL_BRIGHT; r+=4)
+		for (unsigned g = 0; g < FULL_BRIGHT; g+= 4)
+			for (unsigned b = 0; b < FULL_BRIGHT; b+= 4)
 			{
 				leds.SetAll(r, g, b);
 				leds.DisplayAndWait();
@@ -399,7 +485,7 @@ void loop()
 			}
 #endif
 
-#ifdef _TEST_INVERT_
+#if defined(_TEST_INVERT_) || defined(_TEST_EVERYTHING)
 
 	leds.SetAll(FULL_BRIGHT, 0, 0);
 	leds.DisplayAndWait();
@@ -411,7 +497,7 @@ void loop()
 
 #endif
 
-#ifdef _TEST_RESET
+#if defined(_TEST_RESET) || defined(_TEST_EVERYTHING)
 
 	Serial.println("RESET");
 
@@ -420,19 +506,16 @@ void loop()
 		Serial.println("err");
 		delay(ERROR_DELAY);
 		return;
-
-
 	}
+
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
 #endif
 
 
 	
 	Serial.println("DONE");
-
-	delay(COMMAND_DELAY);
-
-
-
 
 
 	
