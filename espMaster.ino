@@ -200,6 +200,7 @@ void setup()
 		delay(1);
 
 	Wire.begin();
+	Wire.setClockStretchLimit(3000);
 
 	Serial.println("LED toy");
 	delay(2000);
