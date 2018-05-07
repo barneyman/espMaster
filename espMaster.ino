@@ -56,7 +56,7 @@ protected:
 	int m_addr;
 
 public:
-	ATleds(int addr) :m_addr(addr)
+	ATleds(int addr) :m_addr(addr), successCount(0)
 	{
 	};
 
@@ -116,6 +116,8 @@ public:
 
 protected:
 
+	unsigned successCount;
+
 	bool SendData(byte *data, unsigned size, bool waitIfDisplayed=false)
 	{
 		Wire.beginTransmission(m_addr);
@@ -128,9 +130,11 @@ protected:
 		byte error = Wire.endTransmission();
 		if (error != I2C_OK)
 		{
-			Serial.printf("err on endTransmission %d\n\r", error);
+			Serial.printf("err on endTransmission %d (successCount %d)\n\r", error, successCount);
+			successCount = 0;
 			return false;
 		}
+		successCount++;
 
 		// we suffer because the at turns off interrupts when it shunts to LED
 		// so - take a breath 
@@ -200,6 +204,7 @@ void setup()
 		delay(1);
 
 	Wire.begin();
+	Wire.setClockStretchLimit(3000);
 
 	Serial.println("LED toy");
 	delay(2000);
