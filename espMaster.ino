@@ -1,6 +1,8 @@
 #include <Wire.h>
 #include <ESP8266WiFi.h>
 
+//#define _XSISTOR_FOR_ON
+
 
 #define CMD_RESET	0	// turn it all off
 #define CMD_SIZE	1	// actual number of LEDS
@@ -9,9 +11,16 @@
 #define CMD_SHIFT	4	// shift current set - signed byte (for L and R) RGB replace
 #define CMD_DISPLAY	6	// shunt out to the LEDS - beware, interrupts get cleared, so I2C will fail
 #define CMD_INVERT	7	// invert all rgbs
+#ifdef _XSISTOR_FOR_ON
+#define CMD_ON		8	// + on/off byte
+#define CMD_OFF		9	// + on/off byte
+#endif
+#define CMD_SETALL_PALETTE		10	// set all leds to RGB
+#define CMD_SETONE_PALETTE		11	// set a single led - offset(0) RGB
+#define CMD_SHIFT_PALETTE		12	// shift current set - signed byte (for L and R) RGB replace
 
-#define NUM_LEDS	90
-//#define NUM_LEDS	15
+//#define NUM_LEDS	90
+#define NUM_LEDS	15
 
 
 #define _AT85_ADDR	0x10
@@ -30,10 +39,10 @@
 //#define DISPLAY_DELAY		(int)(NUM_LEDS/1)
 //#define REQUESTFROM_DELAY	10
 
-#define COMMAND_DELAY		500
+#define COMMAND_DELAY		5000
 #define WIPE_DELAY			0
 #define ERROR_DELAY			1000
-#define DISPLAY_DELAY		5
+#define DISPLAY_DELAY		50
 //#define REQUESTFROM_DELAY	5
 
 
@@ -60,6 +69,20 @@ public:
 	{
 	};
 
+#ifdef _XSISTOR_FOR_ON
+	bool On()
+	{
+		byte data[] = { CMD_ON };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool Off()
+	{
+		byte data[] = { CMD_OFF };
+		return SendData(&data[0], sizeof(data));
+	}
+#endif
+
 	bool SetSize(unsigned size)
 	{
 		byte data[] = { CMD_SIZE, (byte)size };
@@ -72,11 +95,24 @@ public:
 		return SendData(&data[0], sizeof(data));
 	}
 
+	bool SetAllPalette(byte colour)
+	{
+		byte data[] = { CMD_SETALL_PALETTE, colour };
+		return SendData(&data[0], sizeof(data));
+	}
+
 	bool SetOne(byte offset, byte r, byte g, byte b)
 	{
 		byte data[] = { CMD_SETONE,offset, r,g,b };
 		return SendData(&data[0], sizeof(data));
 	}
+
+	bool SetOnePalette(byte offset, byte colour)
+	{
+		byte data[] = { CMD_SETONE_PALETTE,offset, colour };
+		return SendData(&data[0], sizeof(data));
+	}
+
 
 	bool WipeRight(byte r, byte g, byte b, byte step=1)
 	{
@@ -84,12 +120,22 @@ public:
 		return SendData(&data[0], sizeof(data));
 	}
 
-	bool WipeLeft(byte r, byte g, byte b, byte step = 1)
+	bool WipeRightPalette(byte colour, byte step = 1)
 	{
-		byte data[] = { CMD_SHIFT,(byte)(signed char)(-(signed char)step), r,g,b };
+		byte data[] = { CMD_SHIFT_PALETTE,step, colour };
 		return SendData(&data[0], sizeof(data));
 	}
 
+
+	bool WipeLeft(byte r, byte g, byte b, byte step = 1)
+	{
+		return WipeRight(r, g, b, -step);
+	}
+
+	bool WipeLeftPalette(byte colour, byte step = 1)
+	{
+		return WipeRightPalette(colour, -step);
+	}
 
 	bool Clear()
 	{
@@ -130,7 +176,7 @@ protected:
 		byte error = Wire.endTransmission();
 		if (error != I2C_OK)
 		{
-			Serial.printf("err on endTransmission %d (successCount %d)\n\r", error, successCount);
+			Serial.printf("err on endTransmission %d (successCount %d) status %d\n\r", error, successCount, Wire.status());
 			successCount = 0;
 			return false;
 		}
@@ -237,7 +283,7 @@ void setup()
 
 }
 
-#define _TEST_EVERYTHING
+//#define _TEST_EVERYTHING
 // or
 //#define _TEST_ALL
 //#define _TEST_ONE
@@ -270,6 +316,62 @@ void loop()
 	return;
 
 #endif
+
+#ifdef _XSISTOR_FOR_ON
+	leds.On();
+#endif
+
+
+	// try some palette commands :)
+	Serial.println("RED");
+	leds.SetOnePalette(0, 2);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	Serial.println("BLUE");
+	leds.SetOnePalette(1, 4);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	Serial.println("GREEN");
+	leds.SetOnePalette(2, 3);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+
+	for (int roll = 0; roll < NUM_LEDS; roll++)
+	{
+		leds.WipeRightPalette(0);
+		leds.DisplayAndWait();
+		delay(WIPE_DELAY);
+	}
+
+	Serial.println("RESET");
+	leds.Clear();
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+
+	Serial.println("RED");
+	leds.SetAllPalette(2);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	Serial.println("BLUE");
+	leds.SetAllPalette(4);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+	Serial.println("WHITE");
+	leds.SetAllPalette(1);
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
+
+
+	Serial.println("RESET");
+	leds.Clear();
+	leds.DisplayAndWait();
+	delay(COMMAND_DELAY);
 
 
 
@@ -459,6 +561,10 @@ void loop()
 
 #endif
 
+#ifdef _XSISTOR_FOR_ON
+	leds.Off();
+#endif
+
 #if defined(_TEST_LOOPS) || defined(_TEST_EVERYTHING)
 	// loops
 	Serial.println("LOOPS");
@@ -478,6 +584,8 @@ void loop()
 
 #endif
 
+
+
 #if defined(_TEST_LOOPS) || defined(_TEST_EVERYTHING)
 	Serial.println("LOOP COLORS");
 	for (unsigned r = 0; r < FULL_BRIGHT; r+=4)
@@ -490,8 +598,13 @@ void loop()
 			}
 #endif
 
+#ifdef _XSISTOR_FOR_ON
+	leds.On();
+#endif
+
 #if defined(_TEST_INVERT_) || defined(_TEST_EVERYTHING)
 
+	Serial.println("INVERT");
 	leds.SetAll(FULL_BRIGHT, 0, 0);
 	leds.DisplayAndWait();
 	delay(WIPE_DELAY);
@@ -522,7 +635,12 @@ void loop()
 	
 	Serial.println("DONE");
 
+#ifdef _XSISTOR_FOR_ON	
+	leds.Off();
+#endif
 
+
+	delay(2000);
 	
 
 }
