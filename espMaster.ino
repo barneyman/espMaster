@@ -18,6 +18,8 @@
 #define CMD_SETALL_PALETTE		10	// set all leds to RGB
 #define CMD_SETONE_PALETTE		11	// set a single led - offset(0) RGB
 #define CMD_SHIFT_PALETTE		12	// shift current set - signed byte (for L and R) RGB replace
+#define CMD_DIV_PALETTE			13	// apply div to palette colours - one byte = rgb >> div
+#define CMD_USER_PALETTE_SET	14	// set one of the user colours - 4 bytes - offset r g b 
 
 //#define NUM_LEDS	90
 #define NUM_LEDS	15
@@ -39,10 +41,10 @@
 //#define DISPLAY_DELAY		(int)(NUM_LEDS/1)
 //#define REQUESTFROM_DELAY	10
 
-#define COMMAND_DELAY		5000
+#define COMMAND_DELAY		500
 #define WIPE_DELAY			0
 #define ERROR_DELAY			1000
-#define DISPLAY_DELAY		50
+#define DISPLAY_DELAY		20
 //#define REQUESTFROM_DELAY	5
 
 
@@ -83,6 +85,12 @@ public:
 	}
 #endif
 
+	bool SetUserPalette(byte offset, byte r, byte g, byte b)
+	{
+		byte data[] = { CMD_USER_PALETTE_SET, offset, r,g,b };
+		return SendData(&data[0], sizeof(data));
+	}
+
 	bool SetSize(unsigned size)
 	{
 		byte data[] = { CMD_SIZE, (byte)size };
@@ -110,6 +118,12 @@ public:
 	bool SetOnePalette(byte offset, byte colour)
 	{
 		byte data[] = { CMD_SETONE_PALETTE,offset, colour };
+		return SendData(&data[0], sizeof(data));
+	}
+
+	bool SetPaletteDiv(byte div)
+	{
+		byte data[] = { CMD_DIV_PALETTE, div };
 		return SendData(&data[0], sizeof(data));
 	}
 
@@ -291,7 +305,7 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-
+//#define _TEST_PALETTE
 
 void loop()
 {
@@ -321,27 +335,81 @@ void loop()
 	leds.On();
 #endif
 
+	leds.SetUserPalette(16, 128, 128, 0);
+	leds.SetUserPalette(17, 0, 128, 128);
+	leds.SetUserPalette(18, 128, 0, 128);
 
-	// try some palette commands :)
-	Serial.println("RED");
-	leds.SetOnePalette(0, 2);
+	leds.SetAllPalette(16);
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
-	Serial.println("BLUE");
-	leds.SetOnePalette(1, 4);
+	leds.SetAllPalette(17);
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
-	Serial.println("GREEN");
-	leds.SetOnePalette(2, 3);
+	leds.SetAllPalette(18);
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
 
-	for (int roll = 0; roll < NUM_LEDS; roll++)
+#ifdef _TEST_PALETTE
+
+	for (unsigned div = 0; div < 7; div++)
 	{
-		leds.WipeRightPalette(0);
+		leds.SetPaletteDiv(div);
+
+		// try some palette commands :)
+		Serial.println("RED");
+		leds.SetOnePalette(0, 2);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+		Serial.println("BLUE");
+		leds.SetOnePalette(1, 4);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+		Serial.println("GREEN");
+		leds.SetOnePalette(2, 3);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+	
+		for (int roll = 0; roll < NUM_LEDS; roll++)
+		{
+			leds.WipeRightPalette(0);
+			leds.DisplayAndWait();
+			delay(WIPE_DELAY);
+		}
+
+		Serial.println("RESET");
+		leds.Clear();
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+
+		Serial.println("RED");
+		leds.SetAllPalette(2);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+		Serial.println("BLUE");
+		leds.SetAllPalette(4);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+		Serial.println("GREY");
+		leds.SetAllPalette(9);
+		leds.DisplayAndWait();
+		delay(COMMAND_DELAY);
+
+	}
+
+
+	leds.SetAllPalette(9);
+	for (int eeek = 0; eeek < 256; eeek++)
+	{
+		leds.SetPaletteDiv(eeek & 7);
 		leds.DisplayAndWait();
 		delay(WIPE_DELAY);
 	}
@@ -351,29 +419,7 @@ void loop()
 	leds.DisplayAndWait();
 	delay(COMMAND_DELAY);
 
-
-	Serial.println("RED");
-	leds.SetAllPalette(2);
-	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
-
-	Serial.println("BLUE");
-	leds.SetAllPalette(4);
-	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
-
-	Serial.println("WHITE");
-	leds.SetAllPalette(1);
-	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
-
-
-	Serial.println("RESET");
-	leds.Clear();
-	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
-
-
+#endif
 
 #if defined( _TEST_ALL ) || defined(_TEST_EVERYTHING)
 	Serial.println("RED");
@@ -640,7 +686,7 @@ void loop()
 #endif
 
 
-	delay(2000);
+	delay(COMMAND_DELAY);
 	
 
 }
