@@ -3,24 +3,6 @@
 
 //#define _XSISTOR_FOR_ON
 
-
-#define CMD_RESET	0	// turn it all off
-#define CMD_SIZE	1	// actual number of LEDS
-#define CMD_SETALL	2	// set all leds to RGB
-#define CMD_SETONE	3	// set a single led - offset(0) RGB
-#define CMD_SHIFT	4	// shift current set - signed byte (for L and R) RGB replace
-#define CMD_DISPLAY	6	// shunt out to the LEDS - beware, interrupts get cleared, so I2C will fail
-#define CMD_INVERT	7	// invert all rgbs
-#ifdef _XSISTOR_FOR_ON
-#define CMD_ON		8	// + on/off byte
-#define CMD_OFF		9	// + on/off byte
-#endif
-#define CMD_SETALL_PALETTE		10	// set all leds to RGB
-#define CMD_SETONE_PALETTE		11	// set a single led - offset(0) RGB
-#define CMD_SHIFT_PALETTE		12	// shift current set - signed byte (for L and R) RGB replace
-#define CMD_DIV_PALETTE			13	// apply div to palette colours - one byte = rgb >> div
-#define CMD_USER_PALETTE_SET	14	// set one of the user colours - 4 bytes - offset r g b 
-
 //#define NUM_LEDS	90
 #define NUM_LEDS	15
 
@@ -30,22 +12,6 @@
 #define FULL_BRIGHT		16
 #define EXTRA_BRIGHT	31
 
-// time to write to a ws2821b
-// (1.5us * 8 * 3 * NUM_LEDS)+50us 
-// lets go with 100us * NUM_LEDS
-// .1ms * NUM_LEDS
-
-//#define COMMAND_DELAY		1000
-//#define WIPE_DELAY			50
-//#define ERROR_DELAY			1000
-//#define DISPLAY_DELAY		(int)(NUM_LEDS/1)
-//#define REQUESTFROM_DELAY	10
-
-#define COMMAND_DELAY		500
-#define WIPE_DELAY			0
-#define ERROR_DELAY			1000
-#define DISPLAY_DELAY		20
-//#define REQUESTFROM_DELAY	5
 
 
 //#define _USE_OLED
@@ -59,193 +25,8 @@
 #include <Tiny4kOLED.h>
 #endif
 
+#include <atLEDS.h>
 
-class ATleds
-{
-protected:
-
-	int m_addr;
-
-public:
-	ATleds(int addr) :m_addr(addr), successCount(0)
-	{
-	};
-
-#ifdef _XSISTOR_FOR_ON
-	bool On()
-	{
-		byte data[] = { CMD_ON };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool Off()
-	{
-		byte data[] = { CMD_OFF };
-		return SendData(&data[0], sizeof(data));
-	}
-#endif
-
-	bool SetUserPalette(byte offset, byte r, byte g, byte b)
-	{
-		byte data[] = { CMD_USER_PALETTE_SET, offset, r,g,b };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetSize(unsigned size)
-	{
-		byte data[] = { CMD_SIZE, (byte)size };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetAll(byte r, byte g, byte b)
-	{
-		byte data[] = { CMD_SETALL, r,g,b };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetAllPalette(byte colour)
-	{
-		byte data[] = { CMD_SETALL_PALETTE, colour };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetOne(byte offset, byte r, byte g, byte b)
-	{
-		byte data[] = { CMD_SETONE,offset, r,g,b };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetOnePalette(byte offset, byte colour)
-	{
-		byte data[] = { CMD_SETONE_PALETTE,offset, colour };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool SetPaletteDiv(byte div)
-	{
-		byte data[] = { CMD_DIV_PALETTE, div };
-		return SendData(&data[0], sizeof(data));
-	}
-
-
-	bool WipeRight(byte r, byte g, byte b, byte step=1)
-	{
-		byte data[] = { CMD_SHIFT,step, r,g,b };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	bool WipeRightPalette(byte colour, byte step = 1)
-	{
-		byte data[] = { CMD_SHIFT_PALETTE,step, colour };
-		return SendData(&data[0], sizeof(data));
-	}
-
-
-	bool WipeLeft(byte r, byte g, byte b, byte step = 1)
-	{
-		return WipeRight(r, g, b, -step);
-	}
-
-	bool WipeLeftPalette(byte colour, byte step = 1)
-	{
-		return WipeRightPalette(colour, -step);
-	}
-
-	bool Clear()
-	{
-		byte data[] = { CMD_RESET };
-		return SendData(&data[0], sizeof(data));
-	}
-
-	void DisplayAndWait()
-	{
-		// wait until the queue is flushed, so we KNOW we're the only outstanding command
-		byte data[] = { CMD_DISPLAY };
-		bool ret = SendData(&data[0], sizeof(data), true);
-		if (!ret)
-		{
-			Serial.printf("DisplayAndWait failed\n\r");
-		}
-	}
-
-	bool Invert(byte mask)
-	{
-		byte data[] = { CMD_INVERT,mask };
-		return SendData(&data[0], sizeof(data));
-	}
-
-protected:
-
-	unsigned successCount;
-
-	bool SendData(byte *data, unsigned size, bool waitIfDisplayed=false)
-	{
-		Wire.beginTransmission(m_addr);
-		for (unsigned each = 0; each<size; each++)
-		{
-			int sent = Wire.write(data[each]);
-			if ( sent!= 1)
-				Serial.printf("err on write %d\n\r", sent);
-		}
-		byte error = Wire.endTransmission();
-		if (error != I2C_OK)
-		{
-			Serial.printf("err on endTransmission %d (successCount %d) status %d\n\r", error, successCount, Wire.status());
-			successCount = 0;
-			return false;
-		}
-		successCount++;
-
-		// we suffer because the at turns off interrupts when it shunts to LED
-		// so - take a breath 
-		if (waitIfDisplayed)
-		{
-			delay(DISPLAY_DELAY);
-		}
-
-		waitForSpace(waitIfDisplayed);
-
-		return true;
-	}
-
-	// flushed means wait until Display has run really
-	void waitForSpace(bool waitTilEmpty=true)
-	{
-		yield();
-#ifndef REQUESTFROM_DELAY
-		delay(5);
-		return;
-#else
-		// we've just been sending, give the slave some breathing room
-		do {
-			delay(REQUESTFROM_DELAY);
-			byte ack;
-			while (!(ack=Wire.requestFrom(m_addr, 1))) 
-			{
-				// we got no reply from the slave 
-				Serial.printf("%03d ", Wire.status());
-				
-				delay(ERROR_DELAY);
-			}
-			ack = Wire.read();
-			if (waitTilEmpty)
-			{
-				if (ack & 0x40)
-					break;
-			}
-			else if (ack & 0xC0)
-			{
-				break;
-			}
-			else
-			{
-				Serial.printf("ack %02x\n\r",ack);
-			}
-		} while (true);
-#endif
-	}
-
-};
 
 ATleds leds(_AT85_ADDR);
 
@@ -263,11 +44,12 @@ void setup()
 	while (WiFi.getMode() != WIFI_OFF)
 		delay(1);
 
-	Wire.begin();
-	Wire.setClockStretchLimit(3000);
-
 	Serial.println("LED toy");
 	delay(2000);
+
+	leds.begin();
+	Wire.setClockStretchLimit(3000);
+
 
 	i2cscan();
 
@@ -277,7 +59,7 @@ void setup()
 	if (!leds.SetSize(NUM_LEDS))
 	{
 		Serial.println("err size");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 	}
 
 #ifdef _USE_OLED
@@ -305,7 +87,8 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-//#define _TEST_PALETTE
+#define _TEST_PALETTE
+#define _TEST_USER_PALETTE
 
 void loop()
 {
@@ -335,22 +118,26 @@ void loop()
 	leds.On();
 #endif
 
-	leds.SetUserPalette(16, 128, 128, 0);
-	leds.SetUserPalette(17, 0, 128, 128);
-	leds.SetUserPalette(18, 128, 0, 128);
+
+#ifdef _TEST_USER_PALETTE
+
+	leds.SetUserPalette(_COLOR_PALLETE_USER1, 128, 128, 0);
+	leds.SetUserPalette(_COLOR_PALLETE_USER2, 0, 128, 128);
+	leds.SetUserPalette(_COLOR_PALLETE_USER3, 128, 0, 128);
 
 	leds.SetAllPalette(16);
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	leds.SetAllPalette(17);
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	leds.SetAllPalette(18);
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
+#endif
 
 #ifdef _TEST_PALETTE
 
@@ -360,64 +147,64 @@ void loop()
 
 		// try some palette commands :)
 		Serial.println("RED");
-		leds.SetOnePalette(0, 2);
+		leds.SetOnePalette(0, _COLOR_PALLETE_RED);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 		Serial.println("BLUE");
-		leds.SetOnePalette(1, 4);
+		leds.SetOnePalette(1, _COLOR_PALLETE_BLUE);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 		Serial.println("GREEN");
-		leds.SetOnePalette(2, 3);
+		leds.SetOnePalette(2, _COLOR_PALLETE_LIME);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 	
 		for (int roll = 0; roll < NUM_LEDS; roll++)
 		{
 			leds.WipeRightPalette(0);
 			leds.DisplayAndWait();
-			delay(WIPE_DELAY);
+			delay(_ATLEDS_WIPE_DELAY);
 		}
 
 		Serial.println("RESET");
 		leds.Clear();
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 
 		Serial.println("RED");
-		leds.SetAllPalette(2);
+		leds.SetAllPalette(_COLOR_PALLETE_RED);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 		Serial.println("BLUE");
-		leds.SetAllPalette(4);
+		leds.SetAllPalette(_COLOR_PALLETE_BLUE);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 		Serial.println("GREY");
-		leds.SetAllPalette(9);
+		leds.SetAllPalette(_COLOR_PALLETE_GREY);
 		leds.DisplayAndWait();
-		delay(COMMAND_DELAY);
+		delay(_ATLEDS_COMMAND_DELAY);
 
 	}
 
 
-	leds.SetAllPalette(9);
+	leds.SetAllPalette(_COLOR_PALLETE_GREY);
 	for (int eeek = 0; eeek < 256; eeek++)
 	{
 		leds.SetPaletteDiv(eeek & 7);
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
 
 	Serial.println("RESET");
 	leds.Clear();
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif
 
@@ -427,49 +214,49 @@ void loop()
 	if(!leds.SetAll(FULL_BRIGHT,0,0))
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 	}
 
 	leds.DisplayAndWait();
 
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	Serial.println("GREEN");
 	// all green
 	if (!leds.SetAll(0, FULL_BRIGHT, 0))
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	Serial.println("BLUE");
 	// all blue
 	if(!leds.SetAll(0, 0, FULL_BRIGHT))
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	// all white
 	Serial.println("WHITE");
 	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, FULL_BRIGHT))
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif
 
@@ -481,12 +268,12 @@ void loop()
 	if (!leds.SetAll(FULL_BRIGHT, FULL_BRIGHT, FULL_BRIGHT))
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	Serial.println("SETONE BLACK");
 	for (unsigned each = 0; each < NUM_LEDS; each++)
@@ -494,13 +281,13 @@ void loop()
 		if (!leds.SetOne(each, 0, 0, 0))
 		{
 			Serial.println("err");
-			delay(ERROR_DELAY);
+			delay(_ATLEDS_ERROR_DELAY);
 			return;
 		}
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 
 #endif
@@ -514,24 +301,24 @@ void loop()
 		if (!leds.SetOne(alt, 0, FULL_BRIGHT, FULL_BRIGHT))
 		{
 			Serial.println("err");
-			delay(ERROR_DELAY);
+			delay(_ATLEDS_ERROR_DELAY);
 			return;
 		}
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #if defined (_TEST_INVERT_) && defined(_TEST_EVERYTHING)
 
 	leds.Invert(FULL_BRIGHT);
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	leds.Invert(FULL_BRIGHT);
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif 
 
@@ -548,10 +335,10 @@ void loop()
 
 		}
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 	// idx0 green
 	Serial.println("ALT CYAN");
@@ -560,14 +347,14 @@ void loop()
 		if (!leds.SetOne(alt, 0, FULL_BRIGHT, FULL_BRIGHT))
 		{
 			Serial.println("err");
-			delay(ERROR_DELAY);
+			delay(_ATLEDS_ERROR_DELAY);
 			return;
 		}
 		//leds.DisplayAndWait();
-		//delay(WIPE_DELAY);
+		//delay(_ATLEDS_WIPE_DELAY);
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 
 	// shift left - replace blue
@@ -581,10 +368,10 @@ void loop()
 
 		}
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 #endif
 
 #if defined(_TEST_ONE) || defined(_TEST_EVERYTHING)
@@ -595,15 +382,15 @@ void loop()
 		if (!leds.SetOne(each, FULL_BRIGHT, FULL_BRIGHT, 0))
 		{
 			Serial.println("err");
-			delay(ERROR_DELAY);
+			delay(_ATLEDS_ERROR_DELAY);
 			return;
 
 		}
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 
 	}
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif
 
@@ -624,7 +411,7 @@ void loop()
 		//	leds.SetOne(each+1, FULL_BRIGHT, 0, 0);
 
 		leds.DisplayAndWait();
-		delay(WIPE_DELAY);
+		delay(_ATLEDS_WIPE_DELAY);
 	}
 
 
@@ -640,7 +427,7 @@ void loop()
 			{
 				leds.SetAll(r, g, b);
 				leds.DisplayAndWait();
-				delay(WIPE_DELAY);
+				delay(_ATLEDS_WIPE_DELAY);
 			}
 #endif
 
@@ -653,11 +440,11 @@ void loop()
 	Serial.println("INVERT");
 	leds.SetAll(FULL_BRIGHT, 0, 0);
 	leds.DisplayAndWait();
-	delay(WIPE_DELAY);
+	delay(_ATLEDS_WIPE_DELAY);
 	leds.Invert(15);
 	leds.DisplayAndWait();
-	delay(WIPE_DELAY);
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_WIPE_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif
 
@@ -668,12 +455,12 @@ void loop()
 	if (!leds.Clear())
 	{
 		Serial.println("err");
-		delay(ERROR_DELAY);
+		delay(_ATLEDS_ERROR_DELAY);
 		return;
 	}
 
 	leds.DisplayAndWait();
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 
 #endif
 
@@ -686,7 +473,7 @@ void loop()
 #endif
 
 
-	delay(COMMAND_DELAY);
+	delay(_ATLEDS_COMMAND_DELAY);
 	
 
 }
