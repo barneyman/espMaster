@@ -87,8 +87,11 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-#define _TEST_PALETTE
-#define _TEST_USER_PALETTE
+//#define _TEST_PALETTE
+//#define _TEST_USER_PALETTE
+#define _TESTING_MACRO
+
+bool doOnce = false;
 
 void loop()
 {
@@ -118,6 +121,52 @@ void loop()
 	leds.On();
 #endif
 
+#ifdef _TESTING_MACRO
+
+	byte macro[] = {
+		CMD_RESET,
+		CMD_SETALL_PALETTE, _COLOR_PALLETE_LIME,
+		CMD_SETONE_PALETTE, 0, _COLOR_PALLETE_CYAN,
+		CMD_SETONE_PALETTE, 14, _COLOR_PALLETE_CYAN
+	};
+
+	if (!doOnce)
+	{
+		if (!leds.SetMacro(macro, sizeof(macro)))
+		{
+			Serial.println("failed to set macro");
+
+			leds.SetOnePalette(0, _COLOR_PALLETE_RED);
+			leds.DisplayAndWait();
+
+		}
+		else
+		{
+#ifdef _TESTING_MACRO_RUN
+			delay(_ATLEDS_COMMAND_DELAY);
+
+			for (int each = 0; each < 50; each++)
+			{
+				if (!leds.RunMacro())
+				{
+					Serial.println("failed to run macro");
+				}
+				delay(_ATLEDS_COMMAND_DELAY);
+			}
+
+			delay(_ATLEDS_COMMAND_DELAY * 5);
+#endif
+		}
+		doOnce = true;
+	}
+	else
+	{
+		leds.Clear();
+		leds.DisplayAndWait();
+		delay(_ATLEDS_COMMAND_DELAY * 5);
+	}
+
+#endif
 
 #ifdef _TEST_USER_PALETTE
 
