@@ -127,7 +127,14 @@ void loop()
 		CMD_RESET,
 		CMD_SETALL_PALETTE, _COLOR_PALLETE_LIME,
 		CMD_SETONE_PALETTE, 0, _COLOR_PALLETE_CYAN,
-		CMD_SETONE_PALETTE, 14, _COLOR_PALLETE_CYAN
+		CMD_SETONE_PALETTE, 14, _COLOR_PALLETE_CYAN,
+		CMD_DISPLAY,
+		CMD_DELAY_MACRO, 1,
+		CMD_SETALL_PALETTE, _COLOR_PALLETE_RED,
+		CMD_DISPLAY,
+		CMD_DELAY_MACRO, 1,
+		CMD_RESET
+		// macro parser always adds a CMD_DISPLAY as the last instruction
 	};
 
 	if (!doOnce)
@@ -161,8 +168,9 @@ void loop()
 	}
 	else
 	{
-		leds.Clear();
-		leds.DisplayAndWait();
+		//Serial.println("clearing");
+		//leds.Clear();
+		//leds.DisplayAndWait();
 		delay(_ATLEDS_COMMAND_DELAY * 5);
 	}
 
