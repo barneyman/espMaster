@@ -4,7 +4,7 @@
 //#define _XSISTOR_FOR_ON
 
 //#define NUM_LEDS	90
-#define NUM_LEDS	15
+#define NUM_LEDS	200
 
 
 #define _AT85_ADDR	0x10
@@ -87,9 +87,10 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-//#define _TEST_PALETTE
+#define _TEST_PALETTE
 //#define _TEST_USER_PALETTE
 #define _TESTING_MACRO
+#define _TEST_STACK
 
 bool doOnce = false;
 
@@ -221,9 +222,11 @@ void loop()
 	
 		for (int roll = 0; roll < NUM_LEDS; roll++)
 		{
-			leds.WipeRightPalette(0);
+			leds.WipeRightPalette(roll%8);
 			leds.DisplayAndWait();
 			delay(_ATLEDS_WIPE_DELAY);
+			if(!(roll%10))
+				Serial.printf("x");
 		}
 
 		Serial.println("RESET");
@@ -529,6 +532,8 @@ void loop()
 	leds.Off();
 #endif
 
+	// look at the stack
+	Serial.printf("unused stack %u bytes - probably\n\r", leds.GetStackUse());
 
 	delay(_ATLEDS_COMMAND_DELAY);
 	
