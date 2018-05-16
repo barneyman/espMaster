@@ -3,8 +3,7 @@
 
 //#define _XSISTOR_FOR_ON
 
-//#define NUM_LEDS	90
-#define NUM_LEDS	200
+#define NUM_LEDS	15
 
 
 #define _AT85_ADDR	0x10
@@ -55,12 +54,14 @@ void setup()
 
 	// set the size
 	// tell it how many leds it has
+
 	Serial.println("SIZE");
 	if (!leds.SetSize(NUM_LEDS))
 	{
 		Serial.println("err size");
 		delay(_ATLEDS_ERROR_DELAY);
 	}
+	leds.DisplayAndWait(true);
 
 #ifdef _USE_OLED
 
@@ -87,10 +88,12 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-#define _TEST_PALETTE
+//#define _TEST_PALETTE
 //#define _TEST_USER_PALETTE
-#define _TESTING_MACRO
+//#define _TESTING_MACRO
 #define _TEST_STACK
+#define _TESTING_ROLL
+
 
 bool doOnce = false;
 
@@ -121,6 +124,40 @@ void loop()
 #ifdef _XSISTOR_FOR_ON
 	leds.On();
 #endif
+
+#ifdef _TESTING_ROLL
+
+	leds.Clear();
+
+	for (int each=0; each < NUM_LEDS; each++)
+	{
+		if (!leds.SetOnePalette(each, each%8/*_COLOR_PALLETE_BLUE*/))
+			Serial.println("failed");
+	}
+
+	leds.DisplayAndWait();
+
+	delay(_ATLEDS_COMMAND_DELAY);
+
+	for (int each=0; each < NUM_LEDS*2; each++)
+	{
+		leds.RollRight();
+		delay(_ATLEDS_SLOW_WIPE_DELAY);
+		leds.DisplayAndWait();
+	}
+
+	for (int each=0; each < NUM_LEDS*2; each++)
+	{
+		leds.RollLeft();
+		delay(_ATLEDS_SLOW_WIPE_DELAY);
+		leds.DisplayAndWait();
+	}
+
+	delay(_ATLEDS_COMMAND_DELAY);
+
+
+#endif
+
 
 #ifdef _TESTING_MACRO
 
