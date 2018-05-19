@@ -142,14 +142,14 @@ void loop()
 	for (int each=0; each < NUM_LEDS*2; each++)
 	{
 		leds.RollRight();
-		delay(_ATLEDS_SLOW_WIPE_DELAY);
+		delay(_ATLEDS_SLOW_WIPE_DELAY*3);
 		leds.DisplayAndWait();
 	}
 
 	for (int each=0; each < NUM_LEDS*2; each++)
 	{
 		leds.RollLeft();
-		delay(_ATLEDS_SLOW_WIPE_DELAY);
+		delay(_ATLEDS_SLOW_WIPE_DELAY*3);
 		leds.DisplayAndWait();
 	}
 
