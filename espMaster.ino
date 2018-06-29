@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <ESP8266WiFi.h>
+#include <debugLogger.h>
 
 //#define _XSISTOR_FOR_ON
 
@@ -11,6 +12,7 @@
 #define FULL_BRIGHT		16
 #define EXTRA_BRIGHT	31
 
+SerialDebug serialLog;
 
 
 //#define _USE_OLED
@@ -27,7 +29,7 @@
 #include <atLEDS.h>
 
 
-ATleds leds(_AT85_ADDR);
+ATleds leds(_AT85_ADDR, &serialLog);
 
 
 #ifdef _USE_OLED
@@ -88,7 +90,7 @@ void setup()
 //#define _TEST_INVERT_
 //#define _TEST_LONG_CHAIN
 //#define _TEST_LOOPS
-//#define _TEST_PALETTE
+#define _TEST_PALETTE
 //#define _TEST_USER_PALETTE
 //#define _TESTING_MACRO
 #define _TEST_STACK
